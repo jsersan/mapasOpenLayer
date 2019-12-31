@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta name="viewport" content="initial-scale=1.0, user-scalable=no">
+    <meta charset="utf-8">
+    <title>Ejercicio 12</title>
+    <script src="https://code.jquery.com/jquery-2.2.3.min.js"></script>
+
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.1.1/css/ol.css" type="text/css">
+    <script src="https://cdn.jsdelivr.net/gh/openlayers/openlayers.github.io@master/en/v6.1.1/build/ol.js"></script>
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/css/bootstrap.min.css">
+
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.6/js/bootstrap.min.js"></script>
+
+    <style>
+        /* Always set the map height explicitly to define the size of the div
+       * element that contains the map. */
+        #map {
+            position: relative;
+            overflow: hidden;
+            touch-action: none;
+            height: 80%;
+            top: 10%;
+            width: 68%;
+            left: 30%;
+        }
+
+        /* Optional: Makes the sample page fill the window. */
+        html,
+        body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            background-color: lightgray;
+        }
+        div#buscador {
+            position: absolute;
+            top: 25%;
+            left: 5px;
+        }
+        .popover-content {
+            width: 300px;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body onload="initialize_map();">
+<div id="buscador">
+    <p><select id="provincia">
+        <option value="">Seleccione provincia</option>
+    </select></p>
+    <p><select id="municipio" disabled>
+        <option value="">Seleccione municipio</option>
+    </select></p>
+    <p><select id="tipocentro">
+        <option value="">Seleccione el tipo de centro</option>
+        <option value="CIFP">Centro Integrado de Formación Profesional</option>
+        <option value="CPEIPS">Centro Privado de Educación Infantil, Primaria y Secundaria</option>
+        <option value="CPES">Centro Privado de Educación Secundaria</option>
+        <option value="CPFPB">Centro Privado de Formación Profesional Básica</option>
+        <option value="IES">Instituto de Educación Secundaria</option>
+        <option value="IMFPB">Instituto Municipal de Formación Profesional Básica</option>
+    </select></p>
+    <p><select id="modulo">
+        <option value="">Seleccione el modulo que quiere cursar</option>
+    </select></p>
+</div>
+
+<div id="map"><div id="popup"></div></div>
+
+<script src="centrosEducativos.json.js"></script>
+<script src="CiclosFormativosInformatica.json.js"></script>
+<script src="proj4.js"></script>
+
+
+
+<script>
+    // This example displays a marker at the center of Australia.
+    // When the user clicks the marker, an info window opens.
+
+    let provincias = new Array();
+
+    centros.forEach(centro => {
+        if (provincias[centro.DTERRC] == undefined) {
+            provincias[centro.DTERRC.toUpperCase()] = new Array();
+        }
+        if (!provincias[centro.DTERRC.toUpperCase()].includes(centro.DMUNIC)) {
+            provincias[centro.DTERRC.toUpperCase()].push(centro.DMUNIC)
+        }
+
+    });
+
+    for (const provincia in provincias) {
+        let x = document.getElementById("provincia");
+        let option = document.createElement("option");
+        option.text = provincia;
+        x.add(option)
+    }
+
+    for (const ciclo in ciclos) {
+        let x = document.getElementById("modulo");
+        let option = document.createElement("option");
+        option.text = ciclos[ciclo].nom;
+        option.setAttribute("value",ciclos[ciclo].codcicl);
+        x.add(option)
+    }
+
+    function actualizarMunicipios() {
+
+        if(document.getElementById("municipio").disabled)
+        {
+            document.getElementById("municipio").removeAttribute("disabled")
+        }
+
+        let seleccionado = document.getElementById("provincia").value;
+        let x = document.getElementById("municipio");
+        x.innerHTML ="";
+        let option = document.createElement("option");
+        option.setAttribute("value","");
+        option.text = "Seleccione municipio";
+        x.add(option);
+        for (const municipio in provincias[seleccionado]) {
+            option = document.createElement("option");
+            option.text = provincias[seleccionado][municipio];
+            x.add(option)
+
+        }
+        actualizarMapa()
+    }
+    document.getElementById("provincia").addEventListener("change",actualizarMunicipios);
+    document.getElementById("municipio").addEventListener("change",actualizarMapa);
+    document.getElementById("tipocentro").addEventListener("change",actualizarMapa);
+    document.getElementById("modulo").addEventListener("change",actualizarMapa);
+
+    function actualizarMapa() {
+        $(document.getElementById('popup')).popover('destroy');
+
+        features = [];
+        mimapa.removeLayer(pines);
+
+        console.log("borrado");
+        let aInsertar=new Array();
+
+
+        provincia = document.getElementById("provincia").value;
+        municipio = document.getElementById("municipio").value;
+        tipoCentro = document.getElementById("tipocentro").value;
+        modulo = document.getElementById("modulo").value;
+        var loscentros;
+        for (const ciclodeciclos of ciclos) {
+            if (ciclodeciclos.codcicl == modulo){
+                loscentros=ciclodeciclos.centros
+            }
+
+        }
+
+
+        centros.forEach(centro => {
+
+            var insertar = true;
+            if (provincia != "" && provincia != centro.DTERRC) {
+                insertar = false
+            }
+            if (municipio!="" && centro.DMUNIC != municipio )
+            {
+                insertar=false
+            }
+            if(tipoCentro!="" && centro.DGENRC != tipoCentro){
+                insertar=false
+            }
+            if(modulo!="" && !(loscentros.includes(centro.CCEN)))
+            {
+                insertar=false
+            }
+            if (insertar) {
+                aInsertar.push(centro)
+            }
+        });
+        aniadirMarkers(aInsertar)
+    }
+
+    var features = [];
+    var pines;
+    function aniadirMarkers(centros){
+        /* let infowindow = new google.maps.InfoWindow();
+
+        let marker, i;
+        */
+        mimapa.getView().setZoom(8);
+        mimapa.getView().setCenter(ol.proj.fromLonLat([-2.4587807,43.1145541]));
+
+        for (i = 0; i < centros.length; i++) {
+            let utm = "+proj=utm +zone=30";
+            let wgs84 = "+proj=longlat +ellps=WGS84 +datum=WGS84 +no_defs";
+            let convertido = proj4(utm,wgs84,[centros[i].COOR_X, centros[i].COOR_Y]);
+            let lat = convertido[0];
+            let long = convertido[1];
+
+            var iconFeature = new ol.Feature({
+                geometry: new ol.geom.Point(ol.proj.transform([lat, long], 'EPSG:4326', 'EPSG:3857')),
+                name: ''+centros[i].NOM,
+                contenido:  '<p id="firstHeading" class="firstHeading">'+centros[i].NOM+'</p><div id="bodyContent">'+
+                    "CCEN: "+ centros[i].CCEN + "<br/>" +
+                    "NOME: " + centros[i].NOME + "<br/>" +
+                    "DGENRC: " + centros[i].DGENRC + "<br/>" +
+                    "DGENRE: " + centros[i].DGENRE + "<br/>" +
+                    "GENR: " + centros[i].GENR + "<br/>" +
+                    "MUNI: " + centros[i].MUNI + "<br/>" +
+                    "DMUNIC: " + centros[i].DMUNIC + "<br/>" +
+                    "DMUNIE: " + centros[i].DMUNIE + "<br/>" +
+                    "DTERRC: " + centros[i].DTERRC + "<br/>" +
+                    "DTERRE: " + centros[i].DTERRE + "<br/>" +
+                    "DEPE: " + centros[i].DEPE + "<br/>" +
+                    "DTITUC: " + centros[i].DTITUC + "<br/>" +
+                    "DOMI: " + centros[i].DOMI + "<br/>" +
+                    "CPOS: " + centros[i].CPOS + "<br/>" +
+                    "TEL1: " + centros[i].TEL1 + "<br/>" +
+                    "TFAX: " + centros[i].TFAX + "<br/>" +
+                    "EMAIL: " + centros[i].EMAIL + "<br/>" +
+                    '</div>'
+            });
+            icono = "https://openlayers.org/en/v3.20.1/examples/data/icon.png";
+            scale = 0.6;
+            switch (document.getElementById('modulo').value) {
+                case "10001":
+                    icono = "http://maps.google.com/mapfiles/kml/pushpin/blue-pushpin.png";
+                    scale = 0.4;
+                    break;
+                case "10002":
+                    icono = "http://maps.google.com/mapfiles/kml/pushpin/grn-pushpin.png";
+                    scale = 0.4;
+                    break;
+                case "10003":
+                    icono = "http://maps.google.com/mapfiles/kml/pushpin/ltblu-pushpin.png";
+                    scale = 0.4;
+                    break;
+                case "10004":
+                    icono = "http://maps.google.com/mapfiles/kml/pushpin/pink-pushpin.png";
+                    scale = 0.4;
+                    break;
+
+            }
+            var iconStyle = new ol.style.Style({
+                image: new ol.style.Icon(({
+                    anchor: [0.5, 1],
+                    scale: scale,
+                    src:  icono
+                }))
+            });
+
+            iconFeature.setStyle(iconStyle);
+            features.push(iconFeature);
+
+
+        }
+        var vectorSource = new ol.source.Vector({
+            features: features
+        });
+
+        pines = new ol.layer.Vector({
+            source: vectorSource
+        });
+        mimapa.addLayer(pines);
+
+
+    }
+
+
+
+
+
+    let mimapa;
+    var mapLat = 42.8467;
+    var mapLng = -2.67164;
+    var mapDefaultZoom = 13;
+    var markers;
+    function initialize_map() {
+        mimapa = new ol.Map({
+            target: document.getElementById('map'),
+            layers: [
+                new ol.layer.Tile({
+                    source: new ol.source.OSM({
+                        url: "https://a.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    })
+                })
+            ],
+            view: new ol.View({
+                center: ol.proj.fromLonLat([mapLng, mapLat]),
+                zoom: mapDefaultZoom
+            })
+        });
+        var element = document.getElementById('popup');
+
+        var popup = new ol.Overlay({
+            element: element,
+            positioning: 'bottom-center',
+            stopEvent: false,
+            offset: [0, -50]
+        });
+        mimapa.addOverlay(popup);
+
+        // display popup on click
+        mimapa.on('click', function(evt) {
+            var feature = mimapa.forEachFeatureAtPixel(evt.pixel,
+                function(feature) {
+                    return feature;
+                });
+
+            if (feature) {
+                $(element).popover('destroy');
+
+                var coordinates = feature.getGeometry().getCoordinates();
+                popup.setPosition(coordinates);
+                $(element).popover({
+                    placement: 'top',
+                    html: true,
+                    animation: false,
+                    content: feature.get('contenido')
+                });
+                $(element).popover('show');
+            } else {
+                $(element).popover('destroy');
+            }
+        });
+
+        // change mouse cursor when over marker
+        mimapa.on('pointermove', function(e) {
+            if (e.dragging) {
+                $(element).popover('destroy');
+                return;
+            }
+            var pixel = mimapa.getEventPixel(e.originalEvent);
+            var hit = mimapa.hasFeatureAtPixel(pixel);
+            mimapa.getTarget().style.cursor = hit ? 'pointer' : '';
+        });
+
+
+    }
+</script>
+</body>
+
+</html>
+
+
